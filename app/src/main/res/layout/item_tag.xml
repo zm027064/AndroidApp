@@ -20,7 +20,7 @@
         android:layout_height="wrap_content"
         android:text="Tag"
         android:textSize="12sp"
-        android:textColor="#FFFFFF" />
+        android:textColor="#000000" />
 
     <ImageButton
         android:id="@+id/tag_delete_button"

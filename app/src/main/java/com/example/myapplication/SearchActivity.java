@@ -41,10 +41,9 @@ public class SearchActivity extends AppCompatActivity implements PhotoAdapter.On
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_search);
 
-        albums = (List<Album>) getIntent().getSerializableExtra("albums");
-        if (albums == null) {
-            albums = new ArrayList<>();
-        }
+        // Load albums from centralized DataStore
+        albums = com.example.myapplication.util.DataStore.getAlbums(this);
+        if (albums == null) albums = new ArrayList<>();
 
         searchResults = new ArrayList<>();
 
@@ -116,18 +115,55 @@ public class SearchActivity extends AppCompatActivity implements PhotoAdapter.On
         TagType type = getSelectedTagType(tagType1Spinner);
         List<String> suggestions = SearchManager.getTagValueSuggestions(albums, type);
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
-                android.R.layout.simple_list_item_1, suggestions);
+                android.R.layout.simple_dropdown_item_1line, suggestions);
         tagValue1Input.setAdapter(adapter);
         tagValue1Input.setThreshold(1);
+
+        // Update suggestions dynamically as user types
+        tagValue1Input.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                String prefix = s.toString();
+                List<String> filtered = SearchManager.getAutocompleteSuggestions(albums, type, prefix);
+                ArrayAdapter<String> newAdapter = new ArrayAdapter<>(SearchActivity.this,
+                        android.R.layout.simple_dropdown_item_1line, filtered);
+                tagValue1Input.setAdapter(newAdapter);
+                tagValue1Input.showDropDown();
+            }
+
+            @Override
+            public void afterTextChanged(android.text.Editable s) {}
+        });
     }
 
     private void updateTagValue2Suggestions() {
         TagType type = getSelectedTagType(tagType2Spinner);
         List<String> suggestions = SearchManager.getTagValueSuggestions(albums, type);
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
-                android.R.layout.simple_list_item_1, suggestions);
+                android.R.layout.simple_dropdown_item_1line, suggestions);
         tagValue2Input.setAdapter(adapter);
         tagValue2Input.setThreshold(1);
+
+        tagValue2Input.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                String prefix = s.toString();
+                List<String> filtered = SearchManager.getAutocompleteSuggestions(albums, type, prefix);
+                ArrayAdapter<String> newAdapter = new ArrayAdapter<>(SearchActivity.this,
+                        android.R.layout.simple_dropdown_item_1line, filtered);
+                tagValue2Input.setAdapter(newAdapter);
+                tagValue2Input.showDropDown();
+            }
+
+            @Override
+            public void afterTextChanged(android.text.Editable s) {}
+        });
     }
 
     private TagType getSelectedTagType(Spinner spinner) {
@@ -190,6 +226,8 @@ public class SearchActivity extends AppCompatActivity implements PhotoAdapter.On
         if (photoAlbum != null) {
             Intent intent = new Intent(this, PhotoActivity.class);
             intent.putExtra("album", photoAlbum);
+            // pass the full albums list so PhotoActivity can update/save consistently
+            intent.putExtra("allAlbums", new java.util.ArrayList<>(albums));
             intent.putExtra("photoIndex", photoAlbum.getPhotos().indexOf(photo));
             startActivity(intent);
         }

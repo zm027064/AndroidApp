@@ -5,7 +5,10 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp"
+    android:paddingLeft="12dp"
+    android:paddingRight="12dp"
+    android:paddingTop="12dp"
+    android:paddingBottom="12dp"
     tools:context=".AlbumActivity">
 
     <!-- Album Header -->
@@ -19,9 +22,12 @@
         <Button
             android:id="@+id/back_button"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
+            android:minWidth="64dp"
+            android:singleLine="true"
             android:text="@string/back"
-            android:padding="8dp" />
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp" />
 
         <TextView
             android:id="@+id/album_name_title"
@@ -31,66 +37,86 @@
             android:text="Album"
             android:textSize="24sp"
             android:textStyle="bold"
-            android:layout_marginStart="16dp" />
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp" />
 
         <Button
             android:id="@+id/album_options_menu"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
             android:text="⋮"
-            android:textSize="18sp" />
+            android:textSize="20sp" />
 
     </LinearLayout>
 
     <!-- Photos Grid -->
-    <RecyclerView
+    <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/photo_grid"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:padding="8dp" />
+        android:padding="4dp" />
 
     <!-- Empty State -->
     <TextView
         android:id="@+id/empty_photos_message"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:text="@string/no_photos_in_album"
         android:gravity="center"
         android:textSize="16sp"
         android:visibility="gone" />
 
-    <!-- Action Buttons -->
+    <!-- Action Buttons Row 1 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:layout_marginTop="16dp">
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="8dp"
+        android:baselineAligned="false">
 
         <Button
             android:id="@+id/add_photo_button"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="56dp"
             android:layout_weight="1"
             android:text="@string/add_photo"
-            android:layout_marginEnd="4dp" />
+            android:layout_margin="4dp"
+            android:gravity="center"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:includeFontPadding="false"
+            android:singleLine="true" />
 
         <Button
             android:id="@+id/remove_photo_button"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="56dp"
             android:layout_weight="1"
             android:text="@string/remove_photo"
-            android:layout_marginStart="4dp"
-            android:layout_marginEnd="4dp" />
+            android:layout_margin="4dp"
+            android:gravity="center"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:includeFontPadding="false"
+            android:lines="2"
+            android:ellipsize="end" />
 
         <Button
             android:id="@+id/move_photo_button"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="56dp"
             android:layout_weight="1"
             android:text="@string/move_photo"
-            android:layout_marginStart="4dp" />
+            android:layout_margin="4dp"
+            android:gravity="center"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:includeFontPadding="false"
+            android:lines="2"
+            android:ellipsize="end" />
 
     </LinearLayout>
 

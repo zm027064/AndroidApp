@@ -6,6 +6,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Photo implements Serializable {
+    private static final long serialVersionUID = 1L;
+    
     private String imagePath;
     private String filename;
     private List<Tag> tags;

@@ -24,6 +24,7 @@
     <string name="slideshow">Slideshow</string>
     <string name="add_tag">Add Tag</string>
     <string name="delete_tag">Delete Tag</string>
+    <string name="rename">Rename</string>
     <string name="tags_label">Tags</string>
     <string name="no_tags">No tags added yet</string>
     

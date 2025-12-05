@@ -1,6 +1,8 @@
 package com.example.myapplication.adapter;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -12,6 +14,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.example.myapplication.R;
 import com.example.myapplication.model.Album;
+import com.example.myapplication.model.Photo;
 
 import java.util.List;
 
@@ -44,7 +47,30 @@ public class AlbumAdapter extends RecyclerView.Adapter<AlbumAdapter.AlbumViewHol
         Album album = albums.get(position);
         holder.albumName.setText(album.getName());
         holder.photoCount.setText(album.getPhotoCount() + " photos");
-        
+
+        // Choose a random photo as the album thumbnail when photos exist
+        if (album.getPhotoCount() > 0) {
+            try {
+                int idx = new java.util.Random().nextInt(album.getPhotoCount());
+                Photo p = album.getPhotos().get(idx);
+                String path = p.getImagePath();
+                if (path != null) {
+                    Bitmap bmp = BitmapFactory.decodeFile(path);
+                    if (bmp != null) {
+                        holder.thumbnail.setImageBitmap(bmp);
+                    } else {
+                        holder.thumbnail.setImageResource(R.drawable.ic_photo_placeholder);
+                    }
+                } else {
+                    holder.thumbnail.setImageResource(R.drawable.ic_photo_placeholder);
+                }
+            } catch (Exception e) {
+                holder.thumbnail.setImageResource(R.drawable.ic_photo_placeholder);
+            }
+        } else {
+            holder.thumbnail.setImageResource(R.drawable.ic_photo_placeholder);
+        }
+
         holder.itemView.setOnClickListener(v -> {
             if (listener != null) {
                 listener.onAlbumClick(album);

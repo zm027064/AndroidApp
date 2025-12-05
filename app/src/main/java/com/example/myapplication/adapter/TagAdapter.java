@@ -107,6 +107,12 @@ public class TagAdapter extends RecyclerView.Adapter<TagAdapter.TagViewHolder> {
         return new HashSet<>(selectedPositions);
     }
 
+    public void setSelectedPositions(Set<Integer> positions) {
+        selectedPositions.clear();
+        if (positions != null) selectedPositions.addAll(positions);
+        notifyDataSetChanged();
+    }
+
     public List<Tag> getSelectedTags() {
         List<Tag> selected = new java.util.ArrayList<>();
         for (int pos : selectedPositions) {

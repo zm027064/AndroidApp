@@ -6,6 +6,7 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.MediaStore;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
@@ -19,6 +20,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.example.myapplication.adapter.PhotoAdapter;
 import com.example.myapplication.model.Album;
 import com.example.myapplication.model.Photo;
+import com.example.myapplication.util.DataStore;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,8 +29,9 @@ public class AlbumActivity extends AppCompatActivity implements PhotoAdapter.OnP
 
     private static final int PICK_IMAGE = 1;
     private static final int PHOTO_REQUEST_CODE = 2;
+    private static final String TAG = "AlbumActivity";
     private Album album;
-    private List<Photo> photos;
+    private List<Album> allAlbums;
     private RecyclerView photoGrid;
     private PhotoAdapter photoAdapter;
     private TextView albumTitle;
@@ -40,10 +43,14 @@ public class AlbumActivity extends AppCompatActivity implements PhotoAdapter.OnP
         setContentView(R.layout.activity_album);
 
         album = (Album) getIntent().getSerializableExtra("album");
-        if (album != null) {
-            photos = new ArrayList<>(album.getPhotos());
-        } else {
-            photos = new ArrayList<>();
+        allAlbums = DataStore.getAlbums(this);
+        if (album != null && allAlbums != null) {
+            album = DataStore.findAlbumByName(album.getName());
+        }
+        
+        if (album == null) {
+            finish();
+            return;
         }
 
         albumTitle = findViewById(R.id.album_name_title);
@@ -53,7 +60,7 @@ public class AlbumActivity extends AppCompatActivity implements PhotoAdapter.OnP
 
         emptyMessage = findViewById(R.id.empty_photos_message);
         photoGrid = findViewById(R.id.photo_grid);
-        photoAdapter = new PhotoAdapter(this, photos, this);
+        photoAdapter = new PhotoAdapter(this, album.getPhotos(), this);
         photoGrid.setLayoutManager(new GridLayoutManager(this, 3));
         photoGrid.setAdapter(photoAdapter);
 
@@ -61,6 +68,9 @@ public class AlbumActivity extends AppCompatActivity implements PhotoAdapter.OnP
 
         Button backButton = findViewById(R.id.back_button);
         backButton.setOnClickListener(v -> finish());
+
+        Button albumOptionsMenu = findViewById(R.id.album_options_menu);
+        albumOptionsMenu.setOnClickListener(v -> showAlbumOptions());
 
         Button addPhotoButton = findViewById(R.id.add_photo_button);
         addPhotoButton.setOnClickListener(v -> addPhoto());
@@ -77,6 +87,59 @@ public class AlbumActivity extends AppCompatActivity implements PhotoAdapter.OnP
         startActivityForResult(intent, PICK_IMAGE);
     }
 
+    private void showAlbumOptions() {
+        String[] options = {"Rename Album", "Delete Album", "Cancel"};
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Album Options");
+        builder.setItems(options, (dialog, which) -> {
+            if (which == 0) {
+                renameAlbum();
+            } else if (which == 1) {
+                deleteAlbum();
+            }
+        });
+        builder.show();
+    }
+
+    private void renameAlbum() {
+        if (album == null) return;
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Rename Album");
+        
+        android.widget.EditText input = new android.widget.EditText(this);
+        input.setText(album.getName());
+        input.setSelectAllOnFocus(true);
+        builder.setView(input);
+        
+        builder.setPositiveButton("OK", (dialog, which) -> {
+            String newName = input.getText().toString().trim();
+            if (!newName.isEmpty() && album != null) {
+                DataStore.renameAlbum(AlbumActivity.this, album.getName(), newName);
+                allAlbums = DataStore.getAlbums(AlbumActivity.this);
+                album = DataStore.findAlbumByName(newName);
+                albumTitle.setText(newName);
+                Toast.makeText(AlbumActivity.this, "Album renamed", Toast.LENGTH_SHORT).show();
+            }
+        });
+        builder.setNegativeButton("Cancel", null);
+        builder.show();
+    }
+
+    private void deleteAlbum() {
+        if (album == null) return;
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Delete Album?");
+        builder.setMessage("Delete '" + album.getName() + "'?");
+        builder.setPositiveButton("Delete", (dialog, which) -> {
+            if (album != null) DataStore.deleteAlbum(AlbumActivity.this, album.getName());
+            Toast.makeText(AlbumActivity.this, "Album deleted", Toast.LENGTH_SHORT).show();
+            setResult(RESULT_OK);
+            finish();
+        });
+        builder.setNegativeButton("Cancel", null);
+        builder.show();
+    }
+
     private void removePhoto() {
         List<Photo> selectedPhotos = photoAdapter.getSelectedPhotos();
         if (!selectedPhotos.isEmpty()) {
@@ -85,13 +148,12 @@ public class AlbumActivity extends AppCompatActivity implements PhotoAdapter.OnP
             builder.setMessage("Remove " + selectedPhotos.size() + " photo(s)?");
             builder.setPositiveButton("Remove", (dialog, which) -> {
                 for (Photo photo : selectedPhotos) {
-                    photos.remove(photo);
-                    if (album != null) {
-                        album.removePhoto(photo);
-                    }
+                    DataStore.removePhoto(AlbumActivity.this, album.getName(), photo.getImagePath(), photo.getFilename());
                 }
+                allAlbums = DataStore.getAlbums(AlbumActivity.this);
+                album = DataStore.findAlbumByName(album.getName());
                 photoAdapter.clearSelection();
-                photoAdapter.updatePhotos(photos);
+                photoAdapter.updatePhotos(album.getPhotos());
                 updateEmptyState();
                 Toast.makeText(AlbumActivity.this, "Photos removed", Toast.LENGTH_SHORT).show();
             });
@@ -104,13 +166,52 @@ public class AlbumActivity extends AppCompatActivity implements PhotoAdapter.OnP
 
     private void movePhoto() {
         List<Photo> selectedPhotos = photoAdapter.getSelectedPhotos();
-        if (!selectedPhotos.isEmpty()) {
-            // For now, just show a message
-            // Full implementation would require access to all albums
-            Toast.makeText(this, "Move feature requires access to all albums", Toast.LENGTH_SHORT).show();
-        } else {
+        if (selectedPhotos.isEmpty()) {
             Toast.makeText(this, "Select photos to move", Toast.LENGTH_SHORT).show();
+            return;
         }
+
+        // Create list of other albums (exclude current album)
+        List<Album> otherAlbums = new ArrayList<>();
+        for (Album a : allAlbums) {
+            if (!a.equals(album)) {
+                otherAlbums.add(a);
+            }
+        }
+
+        if (otherAlbums.isEmpty()) {
+            Toast.makeText(this, "Create another album to move photos", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // Show dialog to select target album
+        String[] albumNames = new String[otherAlbums.size()];
+        for (int i = 0; i < otherAlbums.size(); i++) {
+            albumNames[i] = otherAlbums.get(i).getName();
+        }
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Move to Album");
+        builder.setItems(albumNames, (dialog, which) -> {
+            Album targetAlbum = otherAlbums.get(which);
+            
+            for (Photo photo : selectedPhotos) {
+                DataStore.movePhoto(AlbumActivity.this, album.getName(), targetAlbum.getName(), photo.getImagePath(), photo.getFilename());
+            }
+            allAlbums = DataStore.getAlbums(AlbumActivity.this);
+            album = DataStore.findAlbumByName(album.getName());
+            // Update UI
+            photoAdapter.clearSelection();
+            photoAdapter.updatePhotos(album.getPhotos());
+            updateEmptyState();
+            // Mark that parent should refresh its list (counts changed)
+            setResult(RESULT_OK);
+            Toast.makeText(AlbumActivity.this,
+                selectedPhotos.size() + " photo(s) moved to " + targetAlbum.getName(),
+                Toast.LENGTH_SHORT).show();
+        });
+        builder.setNegativeButton("Cancel", null);
+        builder.show();
     }
 
     @Override
@@ -119,30 +220,99 @@ public class AlbumActivity extends AppCompatActivity implements PhotoAdapter.OnP
 
         if (requestCode == PICK_IMAGE && resultCode == RESULT_OK && data != null) {
             Uri selectedImage = data.getData();
-            String[] filePathColumn = {MediaStore.Images.Media.DATA};
-            Cursor cursor = getContentResolver().query(selectedImage, filePathColumn, null, null, null);
-            if (cursor != null) {
-                cursor.moveToFirst();
-                int columnIndex = cursor.getColumnIndex(filePathColumn[0]);
-                String picturePath = cursor.getString(columnIndex);
-                cursor.close();
+            if (selectedImage != null) {
+                String picturePath = null;
+                // Try to resolve file path via cursor (may not work on modern devices)
+                try {
+                    String[] filePathColumn = {MediaStore.Images.Media.DATA};
+                    Cursor cursor = getContentResolver().query(selectedImage, filePathColumn, null, null, null);
+                    if (cursor != null) {
+                        if (cursor.moveToFirst()) {
+                            int columnIndex = cursor.getColumnIndex(filePathColumn[0]);
+                            if (columnIndex != -1) {
+                                picturePath = cursor.getString(columnIndex);
+                            }
+                        }
+                        cursor.close();
+                    }
+                } catch (Exception ignored) {}
 
-                Photo newPhoto = new Photo(picturePath);
-                photos.add(newPhoto);
-                if (album != null) {
-                    album.addPhoto(newPhoto);
+                // If we couldn't get a direct file path, copy the content URI into app storage
+                if (picturePath == null) {
+                    picturePath = saveImageFromUri(selectedImage);
                 }
-                photoAdapter.updatePhotos(photos);
-                updateEmptyState();
-                Toast.makeText(this, "Photo added", Toast.LENGTH_SHORT).show();
+
+                if (picturePath != null) {
+                    Photo newPhoto = DataStore.addPhoto(AlbumActivity.this, album.getName(), picturePath, null);
+                    Log.d(TAG, "Adding photo: " + picturePath);
+                    allAlbums = DataStore.getAlbums(AlbumActivity.this);
+                    album = DataStore.findAlbumByName(album.getName());
+                    photoAdapter.updatePhotos(album.getPhotos());
+                    updateEmptyState();
+                    Toast.makeText(this, "Photo added", Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(this, "Unable to add photo", Toast.LENGTH_SHORT).show();
+                }
             }
         } else if (requestCode == PHOTO_REQUEST_CODE && resultCode == RESULT_OK) {
+            // If PhotoActivity returned updated data, merge it into our allAlbums list
+            if (data != null) {
+                // Child PhotoActivity may have changed tags/photos. Refresh from DataStore.
+                allAlbums = DataStore.getAlbums(AlbumActivity.this);
+                album = DataStore.findAlbumByName(album.getName());
+                photoAdapter.updatePhotos(album.getPhotos());
+                updateEmptyState();
+            }
             photoAdapter.clearSelection();
         }
     }
 
+    /**
+     * Copy image content from URI into app private storage and return the saved absolute path.
+     */
+    private String saveImageFromUri(Uri imageUri) {
+        try {
+            String imagesDirName = "images";
+            java.io.File imagesDir = new java.io.File(getFilesDir(), imagesDirName);
+            if (!imagesDir.exists()) imagesDir.mkdirs();
+
+            String fileName = java.util.UUID.randomUUID().toString() + ".jpg";
+            java.io.File outFile = new java.io.File(imagesDir, fileName);
+
+            java.io.InputStream in = getContentResolver().openInputStream(imageUri);
+            if (in == null) {
+                Log.e(TAG, "Could not open input stream for URI: " + imageUri);
+                return null;
+            }
+            java.io.OutputStream out = new java.io.FileOutputStream(outFile);
+
+            byte[] buf = new byte[8192];
+            int len;
+            long totalBytes = 0;
+            while ((len = in.read(buf)) > 0) {
+                out.write(buf, 0, len);
+                totalBytes += len;
+            }
+            out.close();
+            in.close();
+
+            Log.d(TAG, "Saved image to: " + outFile.getAbsolutePath() + " (" + totalBytes + " bytes)");
+            if (outFile.exists()) {
+                Log.d(TAG, "File exists and size is: " + outFile.length() + " bytes");
+            } else {
+                Log.e(TAG, "File was not created!");
+                return null;
+            }
+            return outFile.getAbsolutePath();
+        } catch (Exception e) {
+            Log.e(TAG, "Error saving image from URI", e);
+            e.printStackTrace();
+            return null;
+        }
+    }
+
     private void updateEmptyState() {
-        if (photos.isEmpty()) {
+        if (album.getPhotos().isEmpty()) {
             photoGrid.setVisibility(RecyclerView.GONE);
             emptyMessage.setVisibility(TextView.VISIBLE);
         } else {
@@ -155,8 +325,10 @@ public class AlbumActivity extends AppCompatActivity implements PhotoAdapter.OnP
     public void onPhotoClick(Photo photo) {
         Intent intent = new Intent(this, PhotoActivity.class);
         intent.putExtra("album", album);
+        // Pass full albums list so PhotoActivity can provide suggestions across all albums
+        intent.putExtra("allAlbums", new java.util.ArrayList<>(allAlbums));
         intent.putExtra("photo", photo);
-        intent.putExtra("photoIndex", photos.indexOf(photo));
+        intent.putExtra("photoIndex", album.getPhotos().indexOf(photo));
         startActivityForResult(intent, PHOTO_REQUEST_CODE);
     }
 
@@ -173,5 +345,6 @@ public class AlbumActivity extends AppCompatActivity implements PhotoAdapter.OnP
             intent.putExtra("album", album);
             setResult(RESULT_OK, intent);
         }
+        // DataStore persists changes immediately; nothing to do here.
     }
 }

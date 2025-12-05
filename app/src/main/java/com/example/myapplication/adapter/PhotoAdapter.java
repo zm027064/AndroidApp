@@ -56,10 +56,18 @@ public class PhotoAdapter extends RecyclerView.Adapter<PhotoAdapter.PhotoViewHol
     public void onBindViewHolder(@NonNull PhotoViewHolder holder, int position) {
         Photo photo = photos.get(position);
         
-        // Load and display thumbnail
-        Bitmap bitmap = BitmapFactory.decodeFile(photo.getImagePath());
-        if (bitmap != null) {
-            holder.thumbnail.setImageBitmap(bitmap);
+        // Load and display thumbnail with error handling
+        try {
+            Bitmap bitmap = BitmapFactory.decodeFile(photo.getImagePath());
+            if (bitmap != null) {
+                holder.thumbnail.setImageBitmap(bitmap);
+            } else {
+                // Set placeholder if bitmap is null
+                holder.thumbnail.setImageResource(android.R.drawable.ic_menu_gallery);
+            }
+        } catch (Exception e) {
+            // Set placeholder on error
+            holder.thumbnail.setImageResource(android.R.drawable.ic_menu_gallery);
         }
 
         holder.filename.setText(photo.getFilename());

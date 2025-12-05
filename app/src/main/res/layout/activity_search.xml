@@ -16,9 +16,12 @@
         <Button
             android:id="@+id/back_button"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
+            android:minWidth="64dp"
+            android:singleLine="true"
             android:text="@string/back"
-            android:padding="8dp" />
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp" />
 
         <TextView
             android:layout_width="0dp"
@@ -129,7 +132,7 @@
         android:visibility="gone" />
 
     <!-- Results Grid -->
-    <RecyclerView
+    <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/search_results_grid"
         android:layout_width="match_parent"
         android:layout_height="0dp"

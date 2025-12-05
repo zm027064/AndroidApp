@@ -6,6 +6,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Bundle;
 import android.view.LayoutInflater;
+import android.util.Log;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.AutoCompleteTextView;
@@ -26,12 +27,14 @@ import com.example.myapplication.model.Photo;
 import com.example.myapplication.model.Tag;
 import com.example.myapplication.model.TagType;
 import com.example.myapplication.util.SearchManager;
+import com.example.myapplication.util.TagManager;
 
 import java.util.List;
 
 public class PhotoActivity extends AppCompatActivity implements TagAdapter.OnTagClickListener {
 
     private Album album;
+    private java.util.List<Album> allAlbums;
     private int photoIndex;
     private Photo currentPhoto;
     private List<Photo> albumPhotos;
@@ -49,6 +52,12 @@ public class PhotoActivity extends AppCompatActivity implements TagAdapter.OnTag
         setContentView(R.layout.activity_photo);
 
         album = (Album) getIntent().getSerializableExtra("album");
+        allAlbums = com.example.myapplication.util.DataStore.getAlbums(this);
+
+        // Replace album reference with the canonical instance from DataStore (match by name)
+        if (album != null) {
+            album = com.example.myapplication.util.DataStore.findAlbumByName(album.getName());
+        }
         photoIndex = getIntent().getIntExtra("photoIndex", 0);
 
         if (album == null) {
@@ -89,6 +98,9 @@ public class PhotoActivity extends AppCompatActivity implements TagAdapter.OnTag
 
         Button slideshowButton = findViewById(R.id.slideshow_button);
         slideshowButton.setOnClickListener(v -> toggleSlideshow());
+
+        Button renameButton = findViewById(R.id.rename_button);
+        renameButton.setOnClickListener(v -> showRenameDialog());
     }
 
     private void updatePhoto() {
@@ -98,10 +110,18 @@ public class PhotoActivity extends AppCompatActivity implements TagAdapter.OnTag
 
         currentPhoto = albumPhotos.get(photoIndex);
 
-        // Display photo
-        Bitmap bitmap = BitmapFactory.decodeFile(currentPhoto.getImagePath());
-        if (bitmap != null) {
-            photoView.setImageBitmap(bitmap);
+        // Display photo with error handling
+        try {
+            Bitmap bitmap = BitmapFactory.decodeFile(currentPhoto.getImagePath());
+            if (bitmap != null) {
+                photoView.setImageBitmap(bitmap);
+            } else {
+                // Set placeholder if bitmap is null
+                photoView.setImageResource(android.R.drawable.ic_menu_gallery);
+            }
+        } catch (Exception e) {
+            // Set placeholder on error
+            photoView.setImageResource(android.R.drawable.ic_menu_gallery);
         }
 
         // Display filename
@@ -147,6 +167,74 @@ public class PhotoActivity extends AppCompatActivity implements TagAdapter.OnTag
         }
     }
 
+    private void showDeleteTagDialog() {
+        showDeleteTagDialog(null);
+    }
+
+    /**
+     * Show delete dialog allowing multi-select. If preselect is non-null, the corresponding tag
+     * will be pre-selected in the dialog so the user can quickly remove that one or choose others.
+     */
+    private void showDeleteTagDialog(Tag preselect) {
+        List<Tag> tags = new java.util.ArrayList<>(currentPhoto.getTags());
+        if (tags.isEmpty()) {
+            Toast.makeText(this, "No tags to delete", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        final CharSequence[] items = new CharSequence[tags.size()];
+        final boolean[] checked = new boolean[tags.size()];
+        for (int i = 0; i < tags.size(); i++) {
+            items[i] = tags.get(i).toString();
+            checked[i] = (preselect != null && tags.get(i).equals(preselect));
+        }
+
+        java.util.ArrayList<Integer> selectedIndices = new java.util.ArrayList<>();
+        // Pre-populate selectedIndices with any preselected index
+        for (int i = 0; i < checked.length; i++) if (checked[i]) selectedIndices.add(i);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Select tags to delete");
+        builder.setMultiChoiceItems(items, checked, (dialog, which, isChecked) -> {
+            if (isChecked) {
+                if (!selectedIndices.contains(which)) selectedIndices.add(which);
+            } else {
+                selectedIndices.remove(Integer.valueOf(which));
+            }
+        });
+
+        builder.setPositiveButton("Delete", (dialog, which) -> {
+            if (selectedIndices.isEmpty()) {
+                Toast.makeText(PhotoActivity.this, "No tags selected", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            try {
+                List<Tag> toDelete = new java.util.ArrayList<>();
+                for (int idx : selectedIndices) {
+                    if (idx >= 0 && idx < tags.size()) toDelete.add(tags.get(idx));
+                }
+                for (Tag tag : toDelete) {
+                    TagManager.removeTag(PhotoActivity.this, allAlbums, album, currentPhoto, tag);
+                }
+                // Refresh from DataStore
+                allAlbums = com.example.myapplication.util.DataStore.getAlbums(PhotoActivity.this);
+                album = com.example.myapplication.util.DataStore.findAlbumByName(album.getName());
+                currentPhoto = album.getPhotoAt(photoIndex);
+                if (currentPhoto != null) {
+                    tagAdapter.updateTags(currentPhoto.getTags());
+                    updateTagsVisibility();
+                }
+                Toast.makeText(PhotoActivity.this, toDelete.size() + " tag(s) deleted", Toast.LENGTH_SHORT).show();
+            } catch (Exception e) {
+                Log.e("PhotoActivity", "Error deleting tags", e);
+                Toast.makeText(PhotoActivity.this, "Error deleting tags", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        builder.setNegativeButton("Cancel", null);
+        AlertDialog d = builder.create();
+        d.show();
+    }
     private void showAddTagDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Add Tag");
@@ -162,68 +250,76 @@ public class PhotoActivity extends AppCompatActivity implements TagAdapter.OnTag
         spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         tagTypeSpinner.setAdapter(spinnerAdapter);
 
-        // Setup autocomplete for tag values
-        List<String> suggestions = SearchManager.getTagValueSuggestions(
-                List.of(album),
-                TagType.PERSON);
-        ArrayAdapter<String> autoCompleteAdapter = new ArrayAdapter<>(this,
-                android.R.layout.simple_list_item_1, suggestions);
+        // Setup autocomplete for tag values using DataStore albums
+        java.util.List<Album> suggestionSource = allAlbums != null ? allAlbums : java.util.Collections.singletonList(album);
+        List<String> suggestions = SearchManager.getTagValueSuggestions(suggestionSource, TagType.PERSON);
+        ArrayAdapter<String> autoCompleteAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, suggestions);
         tagValueInput.setAdapter(autoCompleteAdapter);
         tagValueInput.setThreshold(1);
 
         builder.setView(view);
-        builder.setPositiveButton("OK", (dialog, which) -> {
+        AlertDialog dialog = builder.create();
+
+        Button okBtn = view.findViewById(R.id.dialog_ok_button);
+        Button cancelBtn = view.findViewById(R.id.dialog_cancel_button);
+
+        okBtn.setOnClickListener(v -> {
             String tagTypeStr = tagTypeSpinner.getSelectedItem().toString();
             String tagValue = tagValueInput.getText().toString().trim();
 
             if (!tagValue.isEmpty()) {
                 TagType tagType = TagType.fromString(tagTypeStr);
                 Tag newTag = new Tag(tagType, tagValue);
-                currentPhoto.addTag(newTag);
+                TagManager.addTag(PhotoActivity.this, allAlbums, album, currentPhoto, newTag);
+                // Refresh currentPhoto from DataStore
+                allAlbums = com.example.myapplication.util.DataStore.getAlbums(PhotoActivity.this);
+                album = com.example.myapplication.util.DataStore.findAlbumByName(album.getName());
+                currentPhoto = album.getPhotoAt(photoIndex);
                 tagAdapter.updateTags(currentPhoto.getTags());
                 updateTagsVisibility();
                 Toast.makeText(PhotoActivity.this, "Tag added", Toast.LENGTH_SHORT).show();
+                dialog.dismiss();
             }
         });
-        builder.setNegativeButton("Cancel", null);
-        builder.show();
+
+        cancelBtn.setOnClickListener(v -> dialog.dismiss());
+
+        dialog.show();
     }
 
-    private void showDeleteTagDialog() {
-        if (currentPhoto.getTags().isEmpty()) {
-            Toast.makeText(this, "No tags to delete", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
+    private void showRenameDialog() {
+        if (currentPhoto == null) return;
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Select Tags to Delete");
+        builder.setTitle("Rename Image");
 
-        View view = LayoutInflater.from(this).inflate(R.layout.dialog_delete_tag, null);
-        RecyclerView tagsToDeleteList = view.findViewById(R.id.tags_to_delete_list);
-        TextView noTagsMsg = view.findViewById(R.id.no_tags_message);
+        android.widget.EditText input = new android.widget.EditText(this);
+        input.setText(currentPhoto.getFilename());
+        input.setSelectAllOnFocus(true);
+        builder.setView(input);
 
-        if (currentPhoto.getTags().isEmpty()) {
-            noTagsMsg.setVisibility(View.VISIBLE);
-            tagsToDeleteList.setVisibility(View.GONE);
-        } else {
-            TagAdapter deleteAdapter = new TagAdapter(this, currentPhoto.getTags());
-            deleteAdapter.setSelectionMode(true, true);
-            tagsToDeleteList.setLayoutManager(new LinearLayoutManager(this));
-            tagsToDeleteList.setAdapter(deleteAdapter);
-
-            builder.setView(view);
-            builder.setPositiveButton("Delete", (dialog, which) -> {
-                List<Tag> toDelete = deleteAdapter.getSelectedTags();
-                for (Tag tag : toDelete) {
-                    currentPhoto.removeTag(tag);
+        builder.setPositiveButton("OK", (dialog, which) -> {
+            String newName = input.getText().toString().trim();
+            if (newName.isEmpty()) {
+                Toast.makeText(PhotoActivity.this, "Enter a name", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            boolean ok = com.example.myapplication.util.DataStore.renamePhoto(PhotoActivity.this, album.getName(), currentPhoto.getImagePath(), currentPhoto.getFilename(), newName);
+            if (ok) {
+                // Refresh photo and UI
+                allAlbums = com.example.myapplication.util.DataStore.getAlbums(PhotoActivity.this);
+                album = com.example.myapplication.util.DataStore.findAlbumByName(album.getName());
+                currentPhoto = album.getPhotoAt(photoIndex);
+                if (currentPhoto != null) {
+                    photoFilename.setText(currentPhoto.getFilename());
                 }
-                tagAdapter.updateTags(currentPhoto.getTags());
-                updateTagsVisibility();
-                Toast.makeText(PhotoActivity.this, toDelete.size() + " tag(s) deleted", Toast.LENGTH_SHORT).show();
-            });
-            builder.setNegativeButton("Cancel", null);
-            builder.show();
-        }
+                Toast.makeText(PhotoActivity.this, "Image renamed", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(PhotoActivity.this, "Rename failed", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        builder.setNegativeButton("Cancel", null);
+        builder.show();
     }
 
     @Override
@@ -233,10 +329,8 @@ public class PhotoActivity extends AppCompatActivity implements TagAdapter.OnTag
 
     @Override
     public void onTagDelete(Tag tag) {
-        currentPhoto.removeTag(tag);
-        tagAdapter.updateTags(currentPhoto.getTags());
-        updateTagsVisibility();
-        Toast.makeText(this, "Tag deleted", Toast.LENGTH_SHORT).show();
+        // Open the multi-select delete dialog with this tag pre-selected
+        showDeleteTagDialog(tag);
     }
 
     @Override
@@ -244,6 +338,22 @@ public class PhotoActivity extends AppCompatActivity implements TagAdapter.OnTag
         super.onPause();
         Intent intent = new Intent();
         intent.putExtra("album", album);
+        // Ensure DataStore is up-to-date (TagManager/DataStore already persisted changes)
         setResult(RESULT_OK, intent);
+    }
+
+    /**
+     * Replace the album entry inside `allAlbums` (match by name) with this.activity's `album` instance.
+     */
+    private void syncAlbumToAllAlbums() {
+        if (allAlbums == null || album == null) return;
+        for (int i = 0; i < allAlbums.size(); i++) {
+            if (allAlbums.get(i).getName().equals(album.getName())) {
+                allAlbums.set(i, album);
+                return;
+            }
+        }
+        // If not found, add it
+        allAlbums.add(album);
     }
 }
