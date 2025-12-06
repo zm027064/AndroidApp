@@ -10,36 +10,29 @@ import com.example.myapplication.model.TagType;
 
 import java.util.List;
 import java.util.Locale;
-import android.util.Log;
 
 public class TagManager {
     private static final String TAG = "TagManager";
 
     public static void addTag(Context context, List<Album> allAlbums, Album album, Photo photo, Tag tag) {
-        if (tag == null) return;
-        if (tag.getTagType() == null) return;
+        if (photo == null || tag == null || tag.getTagType() == null) return;
 
-        String albumName = album != null ? album.getName() : null;
-        String imagePath = photo != null ? photo.getImagePath() : null;
-        String filename = photo != null ? photo.getFilename() : null;
-
-        boolean ok = DataStore.addTag(context, albumName, imagePath, filename, tag);
+        String photoId = photo.getId();
+        boolean ok = DataStore.addTag(context, photoId, tag);
         if (ok) {
-            Log.d(TAG, "Added tag '" + tag.toString() + "' to photo '" + (filename != null ? filename : imagePath) + "'");
+            Log.d(TAG, "Added tag '" + tag.toString() + "' to photo '" + photo.getFilename() + "'");
         } else {
             Log.d(TAG, "Failed to add tag (may be duplicate or photo not found): " + tag.toString());
         }
     }
 
     public static void removeTag(Context context, List<Album> allAlbums, Album album, Photo photo, Tag tag) {
-        if (tag == null) return;
-        String albumName = album != null ? album.getName() : null;
-        String imagePath = photo != null ? photo.getImagePath() : null;
-        String filename = photo != null ? photo.getFilename() : null;
+        if (photo == null || tag == null) return;
 
-        boolean ok = DataStore.removeTag(context, albumName, imagePath, filename, tag);
+        String photoId = photo.getId();
+        boolean ok = DataStore.removeTag(context, photoId, tag);
         if (ok) {
-            Log.d(TAG, "Removed tag '" + tag.toString() + "' from photo '" + (filename != null ? filename : imagePath) + "'");
+            Log.d(TAG, "Removed tag '" + tag.toString() + "' from photo '" + photo.getFilename() + "'");
         } else {
             Log.d(TAG, "Failed to remove tag (not found): " + tag.toString());
         }
@@ -53,8 +46,6 @@ public class TagManager {
         }
         return null;
     }
-
-    // EXIF write removed: tags are stored in JSON file only.
 
     private static Photo findPhotoByPath(Album album, String path) {
         if (album == null || path == null) return null;
