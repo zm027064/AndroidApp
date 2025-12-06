@@ -40,5 +40,3 @@ dependencies {
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
 }
-
-// No build-time copy from res/stock; assets/stock is maintained directly.
