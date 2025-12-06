@@ -141,77 +141,133 @@ public class AlbumActivity extends AppCompatActivity implements PhotoAdapter.OnP
     }
 
     private void removePhoto() {
-        List<Photo> selectedPhotos = photoAdapter.getSelectedPhotos();
-        if (!selectedPhotos.isEmpty()) {
-            AlertDialog.Builder builder = new AlertDialog.Builder(this);
-            builder.setTitle("Remove Photos?");
-            builder.setMessage("Remove " + selectedPhotos.size() + " photo(s)?");
-            builder.setPositiveButton("Remove", (dialog, which) -> {
-                for (Photo photo : selectedPhotos) {
-                    DataStore.removePhoto(AlbumActivity.this, album.getName(), photo.getImagePath(), photo.getFilename());
-                }
-                allAlbums = DataStore.getAlbums(AlbumActivity.this);
-                album = DataStore.findAlbumByName(album.getName());
-                photoAdapter.clearSelection();
-                photoAdapter.updatePhotos(album.getPhotos());
-                updateEmptyState();
-                Toast.makeText(AlbumActivity.this, "Photos removed", Toast.LENGTH_SHORT).show();
-            });
-            builder.setNegativeButton("Cancel", null);
-            builder.show();
-        } else {
-            Toast.makeText(this, "Select photos to remove", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private void movePhoto() {
-        List<Photo> selectedPhotos = photoAdapter.getSelectedPhotos();
-        if (selectedPhotos.isEmpty()) {
-            Toast.makeText(this, "Select photos to move", Toast.LENGTH_SHORT).show();
+        List<Photo> photos = album.getPhotos();
+        if (photos == null || photos.isEmpty()) {
+            Toast.makeText(this, "No photos to remove", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // Create list of other albums (exclude current album)
-        List<Album> otherAlbums = new ArrayList<>();
-        for (Album a : allAlbums) {
-            if (!a.equals(album)) {
-                otherAlbums.add(a);
-            }
+        final CharSequence[] items = new CharSequence[photos.size()];
+        final boolean[] checked = new boolean[photos.size()];
+        for (int i = 0; i < photos.size(); i++) {
+            Photo p = photos.get(i);
+            items[i] = p.getFilename() != null ? p.getFilename() : p.getImagePath();
+            checked[i] = false;
         }
 
-        if (otherAlbums.isEmpty()) {
-            Toast.makeText(this, "Create another album to move photos", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        // Show dialog to select target album
-        String[] albumNames = new String[otherAlbums.size()];
-        for (int i = 0; i < otherAlbums.size(); i++) {
-            albumNames[i] = otherAlbums.get(i).getName();
-        }
+        final java.util.ArrayList<Integer> selected = new java.util.ArrayList<>();
 
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Move to Album");
-        builder.setItems(albumNames, (dialog, which) -> {
-            Album targetAlbum = otherAlbums.get(which);
-            
-            for (Photo photo : selectedPhotos) {
-                DataStore.movePhoto(AlbumActivity.this, album.getName(), targetAlbum.getName(), photo.getImagePath(), photo.getFilename());
+        builder.setTitle("Select photos to remove");
+        builder.setMultiChoiceItems(items, checked, (dialog, which, isChecked) -> {
+            if (isChecked) {
+                if (!selected.contains(which)) selected.add(which);
+            } else {
+                selected.remove(Integer.valueOf(which));
+            }
+        });
+
+        builder.setPositiveButton("Remove", (dialog, which) -> {
+            if (selected.isEmpty()) {
+                Toast.makeText(AlbumActivity.this, "No photos selected", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            for (int idx : selected) {
+                if (idx >= 0 && idx < photos.size()) {
+                    Photo photo = photos.get(idx);
+                    DataStore.removePhoto(AlbumActivity.this, album.getName(), photo.getImagePath(), photo.getFilename());
+                }
             }
             allAlbums = DataStore.getAlbums(AlbumActivity.this);
             album = DataStore.findAlbumByName(album.getName());
-            // Update UI
             photoAdapter.clearSelection();
             photoAdapter.updatePhotos(album.getPhotos());
             updateEmptyState();
-            // Mark that parent should refresh its list (counts changed)
-            setResult(RESULT_OK);
-            Toast.makeText(AlbumActivity.this,
-                selectedPhotos.size() + " photo(s) moved to " + targetAlbum.getName(),
-                Toast.LENGTH_SHORT).show();
+            Toast.makeText(AlbumActivity.this, selected.size() + " photo(s) removed", Toast.LENGTH_SHORT).show();
         });
+
         builder.setNegativeButton("Cancel", null);
         builder.show();
+    }
+
+    private void movePhoto() {
+        List<Photo> photos = album.getPhotos();
+        if (photos == null || photos.isEmpty()) {
+            Toast.makeText(this, "No photos to move", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        final CharSequence[] items = new CharSequence[photos.size()];
+        final boolean[] checked = new boolean[photos.size()];
+        for (int i = 0; i < photos.size(); i++) {
+            Photo p = photos.get(i);
+            items[i] = p.getFilename() != null ? p.getFilename() : p.getImagePath();
+            checked[i] = false;
+        }
+
+        final java.util.ArrayList<Integer> selected = new java.util.ArrayList<>();
+
+        AlertDialog.Builder pickBuilder = new AlertDialog.Builder(this);
+        pickBuilder.setTitle("Select photos to move");
+        pickBuilder.setMultiChoiceItems(items, checked, (dialog, which, isChecked) -> {
+            if (isChecked) {
+                if (!selected.contains(which)) selected.add(which);
+            } else {
+                selected.remove(Integer.valueOf(which));
+            }
+        });
+
+        pickBuilder.setPositiveButton("Next", (dialog, which) -> {
+            if (selected.isEmpty()) {
+                Toast.makeText(AlbumActivity.this, "No photos selected", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            // Create list of other albums (exclude current album)
+            List<Album> otherAlbums = new ArrayList<>();
+            for (Album a : allAlbums) {
+                if (!a.equals(album)) {
+                    otherAlbums.add(a);
+                }
+            }
+
+            if (otherAlbums.isEmpty()) {
+                Toast.makeText(AlbumActivity.this, "Create another album to move photos", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            // Show dialog to select target album
+            String[] albumNames = new String[otherAlbums.size()];
+            for (int i = 0; i < otherAlbums.size(); i++) {
+                albumNames[i] = otherAlbums.get(i).getName();
+            }
+
+            AlertDialog.Builder builder = new AlertDialog.Builder(AlbumActivity.this);
+            builder.setTitle("Move to Album");
+            builder.setItems(albumNames, (d2, whichAlbum) -> {
+                Album targetAlbum = otherAlbums.get(whichAlbum);
+                int moved = 0;
+                for (int idx : selected) {
+                    if (idx >= 0 && idx < photos.size()) {
+                        Photo photo = photos.get(idx);
+                        boolean ok = DataStore.movePhoto(AlbumActivity.this, album.getName(), targetAlbum.getName(), photo.getImagePath(), photo.getFilename());
+                        if (ok) moved++;
+                    }
+                }
+                allAlbums = DataStore.getAlbums(AlbumActivity.this);
+                album = DataStore.findAlbumByName(album.getName());
+                // Update UI
+                photoAdapter.clearSelection();
+                photoAdapter.updatePhotos(album.getPhotos());
+                updateEmptyState();
+                setResult(RESULT_OK);
+                Toast.makeText(AlbumActivity.this, moved + " photo(s) moved to " + targetAlbum.getName(), Toast.LENGTH_SHORT).show();
+            });
+            builder.setNegativeButton("Cancel", null);
+            builder.show();
+        });
+
+        pickBuilder.setNegativeButton("Cancel", null);
+        pickBuilder.show();
     }
 
     @Override
